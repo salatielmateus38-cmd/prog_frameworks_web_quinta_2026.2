@@ -1,6 +1,8 @@
 const prisma = require("../databases/prisma");
 const AlunoInvalidoError = require("../errors/AlunoInvalidoError");
 const AlunoNaoEncontradoError = require("../errors/AlunoNaoEncontradoError");
+const EmailDuplicadoError = require("../errors/EmailDuplicadoError");
+const alunoSchema = require("../schemas/alunoSchema");
 
 class AlunoService{
 
@@ -30,6 +32,31 @@ class AlunoService{
             throw new AlunoNaoEncontradoError();
         }
         return aluno;
+    }
+
+    async update(id, dados){
+        const resultado = alunoSchema.partial().safeParse(dados);
+        if(!resultado.success || Object.keys(resultado.data).length === 0){
+            // Reutiliza AlunoInvalidoError: dados ausentes ou inválidos têm o mesmo status 400 do cadastro.
+            throw new AlunoInvalidoError("Informe nome e/ou email válidos para atualizar");
+        }
+
+        await this.findUnique(id);
+        try{
+            return await prisma.aluno.update({
+                where: {id},
+                data: resultado.data
+            });
+        }catch(error){
+            if(error.code === "P2025"){
+                throw new AlunoNaoEncontradoError();
+            }
+            if(error.code === "P2002"){
+                // EmailDuplicadoError distingue o conflito de unicidade (409) da validação de entrada (400).
+                throw new EmailDuplicadoError();
+            }
+            throw error;
+        }
     }
 
     async create(aluno){
